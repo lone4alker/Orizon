@@ -12,9 +12,11 @@ from pydantic import BaseModel
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# Load environment variables from the Next.js .env.local file
+# Load environment variables from the Next.js .env.local file and ai/.env
 env_path = os.path.join(os.path.dirname(__file__), "..", "web", ".env.local")
 load_dotenv(dotenv_path=env_path)
+ai_env_path = os.path.join(os.path.dirname(__file__), ".env")
+load_dotenv(dotenv_path=ai_env_path, override=True)
 
 from core.models import NormalizedApplicantProfile
 from engine.core.orchestrator import run_underwriting
@@ -219,9 +221,12 @@ async def process_structured(files: List[UploadFile] = File(...)):
                     data = json.load(f)
                 
                 rows = data if isinstance(data, list) else [data]
-                for row in rows:
-                    profile = map_structured_input(row)
-                    all_profiles.append(profile)
+                for idx, row in enumerate(rows):
+                    try:
+                        profile = map_structured_input(row)
+                        all_profiles.append(profile)
+                    except Exception as e:
+                        print(f"  [API] Failed to map JSON row {idx}: {e}")
             
             elif ext == '.csv':
                 try:
@@ -250,15 +255,18 @@ async def process_structured(files: List[UploadFile] = File(...)):
                         continue
                         
                     df_full = df_full.where(pd.notnull(df_full), None)
-                    for _, row in df_full.iterrows():
+                    for idx, row in df_full.iterrows():
                         row_dict = row.to_dict()
-                        profile = map_structured_input(row_dict)
-                        all_profiles.append(profile)
+                        try:
+                            profile = map_structured_input(row_dict)
+                            all_profiles.append(profile)
+                        except Exception as e:
+                            print(f"  [API] Failed to map CSV row {idx}: {e}")
         finally:
             os.remove(temp_path)
             
     if not all_profiles:
-        raise HTTPException(status_code=400, detail="No valid application data found.")
+        raise HTTPException(status_code=400, detail="No valid application data found in uploaded files.")
 
     return [p.model_dump(exclude_none=True) for p in all_profiles]
 
@@ -285,8 +293,12 @@ async def process_pdf(files: List[UploadFile] = File(...)):
         try:
             profile = parse_document(temp_path)
             
+            extracted_id = getattr(profile, "applicantId", None)
+            if not extracted_id or not str(extracted_id).strip():
+                extracted_id = f"PDF-{uuid.uuid4().hex[:8]}"
+            
             base = NormalizedApplicantProfile(
-                applicantId=f"PDF-{uuid.uuid4().hex[:8]}",
+                applicantId=str(extracted_id).strip(),
                 sourceType="pdf"
             )
             

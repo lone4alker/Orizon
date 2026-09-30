@@ -36,19 +36,91 @@ export function PdfReviewForm({ extractedProfile, onCancel, onSuccess }: PdfRevi
     
     const parsed: Partial<UploadData> = {};
     
-    if (extractedProfile.applicantId) parsed.applicant_ref = extractedProfile.applicantId;
-    if (extractedProfile.bureauScore) parsed.cibil_score = String(extractedProfile.bureauScore);
-    if (extractedProfile.age) parsed.age = String(extractedProfile.age);
-    if (extractedProfile.employmentType) parsed.employment_type = extractedProfile.employmentType;
-    if (extractedProfile.requestedLoanAmount) parsed.requested_amount = String(extractedProfile.requestedLoanAmount);
-    if (extractedProfile.requestedTenure) parsed.tenure_months = String(extractedProfile.requestedTenure);
-    if (extractedProfile.declaredIncome) parsed.monthly_income = String(Math.round(extractedProfile.declaredIncome / 12));
-    if (extractedProfile.emiDebits) parsed.existing_emi = String(extractedProfile.emiDebits);
-    if (extractedProfile.bankAvgBalance || extractedProfile.bankAvgCredits) parsed.avg_bank_balance = String(extractedProfile.bankAvgBalance || extractedProfile.bankAvgCredits);
-    if (extractedProfile.bounceCount) parsed.bounce_count = String(extractedProfile.bounceCount);
-    if (extractedProfile.declaredAssets) parsed.assets_value = String(extractedProfile.declaredAssets);
-    if (extractedProfile.writeOffFlag || extractedProfile.defaultFlag) parsed.last_default = "true";
-    if (extractedProfile.incomeTrend) parsed.income_trend = extractedProfile.incomeTrend.toUpperCase();
+    // 1. Applicant Ref
+    const ref = extractedProfile.applicantId || extractedProfile.applicant_ref || extractedProfile.applicantName || "";
+    if (ref) parsed.applicant_ref = String(ref).trim();
+
+    // 2. Age
+    if (extractedProfile.age !== undefined && extractedProfile.age !== null && extractedProfile.age !== "") {
+      parsed.age = String(extractedProfile.age);
+    }
+
+    // 3. Employment Type
+    const emp = extractedProfile.employmentType ?? extractedProfile.employment_type;
+    if (emp) parsed.employment_type = String(emp);
+
+    // 4. Requested Amount
+    const reqAmount = extractedProfile.requestedLoanAmount ?? extractedProfile.requested_amount ?? extractedProfile.loanAmount;
+    if (reqAmount !== undefined && reqAmount !== null && reqAmount !== "") {
+      parsed.requested_amount = String(reqAmount);
+    }
+
+    // 5. Requested Tenure
+    const tenure = extractedProfile.requestedTenure ?? extractedProfile.tenure_months ?? extractedProfile.tenure;
+    if (tenure !== undefined && tenure !== null && tenure !== "") {
+      parsed.tenure_months = String(tenure);
+    }
+
+    // 6. Monthly Income (prioritize monthlyCredits / monthlyIncome, otherwise monthly derived from declaredIncome)
+    if (extractedProfile.monthlyCredits !== undefined && extractedProfile.monthlyCredits !== null && extractedProfile.monthlyCredits !== "") {
+      parsed.monthly_income = String(Math.round(Number(extractedProfile.monthlyCredits)));
+    } else if (extractedProfile.monthlyIncome !== undefined && extractedProfile.monthlyIncome !== null && extractedProfile.monthlyIncome !== "") {
+      parsed.monthly_income = String(Math.round(Number(extractedProfile.monthlyIncome)));
+    } else if (extractedProfile.monthly_income !== undefined && extractedProfile.monthly_income !== null && extractedProfile.monthly_income !== "") {
+      parsed.monthly_income = String(Math.round(Number(extractedProfile.monthly_income)));
+    } else if (extractedProfile.declaredIncome !== undefined && extractedProfile.declaredIncome !== null && extractedProfile.declaredIncome !== "") {
+      const dec = Number(extractedProfile.declaredIncome);
+      parsed.monthly_income = dec > 200000 ? String(Math.round(dec / 12)) : String(Math.round(dec));
+    }
+
+    // 7. CIBIL Score
+    const cibil = extractedProfile.bureauScore ?? extractedProfile.cibil_score ?? extractedProfile.cibilScore;
+    if (cibil !== undefined && cibil !== null && cibil !== "") {
+      parsed.cibil_score = String(cibil);
+    }
+
+    // 8. Existing EMI
+    const emi = extractedProfile.existingObligations ?? extractedProfile.emiDebits ?? extractedProfile.existing_emi;
+    if (emi !== undefined && emi !== null && emi !== "") {
+      parsed.existing_emi = String(emi);
+    }
+
+    // 9. Average Bank Balance
+    const bal = extractedProfile.bankAvgBalance ?? extractedProfile.bankAvgCredits ?? extractedProfile.avg_bank_balance;
+    if (bal !== undefined && bal !== null && bal !== "") {
+      parsed.avg_bank_balance = String(bal);
+    }
+
+    // 10. Bounce Count (note 0 is a valid number!)
+    const bounce = extractedProfile.bounceCount ?? extractedProfile.bounce_count;
+    if (bounce !== undefined && bounce !== null && bounce !== "") {
+      parsed.bounce_count = String(bounce);
+    }
+
+    // 11. Assets Value
+    const assets = extractedProfile.declaredAssets ?? extractedProfile.assets_value;
+    if (assets !== undefined && assets !== null && assets !== "") {
+      parsed.assets_value = String(assets);
+    }
+
+    // 12. Income Trend
+    const trend = (extractedProfile.incomeTrend || extractedProfile.income_trend || "").toUpperCase();
+    if (["UP", "DOWN", "FLAT"].includes(trend)) {
+      parsed.income_trend = trend;
+    }
+
+    // 13. Last Default
+    if (
+      extractedProfile.writeOffFlag === true ||
+      extractedProfile.defaultFlag === true ||
+      extractedProfile.settlementFlag === true ||
+      extractedProfile.last_default === true ||
+      extractedProfile.last_default === "true"
+    ) {
+      parsed.last_default = "true";
+    } else {
+      parsed.last_default = "false";
+    }
 
     setFormData((prev) => ({ ...prev, ...parsed }));
   }, [extractedProfile]);
